@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ProfileRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 
 class ProfileController extends Controller
 {
@@ -21,15 +21,11 @@ class ProfileController extends Controller
     /**
      * Update user profile
      */
-    public function update(Request $request)
+    public function update(ProfileRequest $request)
     {
         $user = $request->user();
 
-        $validated = $request->validate([
-            'name' => 'nullable|string|max:255',
-            'email' => 'nullable|string|email|max:255|unique:users,email,' . $user->id,
-            'password' => 'nullable|string|min:8|confirmed',
-        ]);
+        $validated = $request->validated();
 
         // Only update fields that are provided
         if (isset($validated['name'])) {
