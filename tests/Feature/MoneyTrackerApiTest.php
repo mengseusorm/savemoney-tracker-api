@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Models\Currency;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -47,6 +48,34 @@ class MoneyTrackerApiTest extends TestCase
             ->assertJsonPath('data.balance', '475.00')
             ->assertJsonPath('data.income_by_source.0.name', 'Salary')
             ->assertJsonPath('data.expense_by_category.0.name', 'Food');
+    }
+
+    public function test_income_amount_is_converted_from_selected_currency(): void
+    {
+        Sanctum::actingAs(User::factory()->create());
+
+        $currency = Currency::create([
+            'code' => 'KHR',
+            'name' => 'Cambodian Riel',
+            'symbol' => 'KHR',
+            'exchange_rate' => 0.00025,
+        ]);
+        $sourceId = $this->postJson('/api/income-sources', [
+            'name' => 'Freelance',
+        ])->assertCreated()->json('data.id');
+
+        $this->postJson('/api/incomes', [
+            'income_source_id' => $sourceId,
+            'title' => 'Invoice',
+            'amount' => 400000,
+            'currency_id' => $currency->id,
+            'income_date' => '2026-05-01',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.amount', '100.00')
+            ->assertJsonPath('data.currency_amount', '400000.00')
+            ->assertJsonPath('data.exchange_rate', '0.000250')
+            ->assertJsonPath('data.currency.code', 'KHR');
     }
 
     public function test_user_cannot_use_another_users_income_source(): void

@@ -11,6 +11,9 @@ class Expense extends Model
         'expense_category_id',
         'title',
         'amount',
+        'currency_id',
+        'currency_amount',
+        'exchange_rate',
         'expense_date',
         'note',
     ];
@@ -19,6 +22,8 @@ class Expense extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'currency_amount' => 'decimal:2',
+            'exchange_rate' => 'decimal:6',
             'expense_date' => 'date',
         ];
     }
@@ -31,5 +36,10 @@ class Expense extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(ExpenseCategory::class, 'expense_category_id');
+    }
+
+    public function currency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class);
     }
 }

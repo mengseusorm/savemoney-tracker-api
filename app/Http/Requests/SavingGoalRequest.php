@@ -4,7 +4,6 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Validator;
 
 class SavingGoalRequest extends FormRequest
 {
@@ -23,6 +22,7 @@ class SavingGoalRequest extends FormRequest
         return [
             'name' => "{$required}|string|max:255",
             'target_amount' => "{$required}|numeric|gt:0",
+            'currency_id' => ['nullable', 'integer', Rule::exists('currencies', 'id')->where('is_active', true)],
             'start_date' => 'nullable|date',
             'deadline' => 'nullable|date|after_or_equal:start_date',
             'status' => ['sometimes', 'string', Rule::in(['active', 'completed', 'cancelled'])],
@@ -30,18 +30,4 @@ class SavingGoalRequest extends FormRequest
         ];
     }
 
-    public function withValidator(Validator $validator): void
-    {
-        $validator->after(function (Validator $validator) {
-            $savingGoal = $this->route('saving_goal');
-
-            if (! $savingGoal || ! $this->filled('target_amount')) {
-                return;
-            }
-
-            if ((float) $this->input('target_amount') < (float) $savingGoal->current_amount) {
-                $validator->errors()->add('target_amount', 'Target amount cannot be less than the current saved amount.');
-            }
-        });
-    }
 }

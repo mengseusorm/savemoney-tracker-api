@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\IncomeRequest;
 use App\Models\Income;
+use App\Support\CurrencyConverter;
 use Illuminate\Http\Request;
 
 class IncomeController extends Controller
@@ -13,7 +14,7 @@ class IncomeController extends Controller
         return response()->json([
             'data' => $request->user()
                 ->incomes()
-                ->with('source')
+                ->with(['source', 'currency'])
                 ->latest('income_date')
                 ->latest()
                 ->get(),
@@ -24,7 +25,7 @@ class IncomeController extends Controller
     {
         $validated = $request->validated();
 
-        $income = $request->user()->incomes()->create($validated)->load('source');
+        $income = $request->user()->incomes()->create($this->withCurrencyAmount($validated))->load(['source', 'currency']);
 
         return response()->json([
             'message' => 'Income created successfully',
@@ -37,7 +38,7 @@ class IncomeController extends Controller
         $this->authorizeOwner($request, $income);
 
         return response()->json([
-            'data' => $income->load('source'),
+            'data' => $income->load(['source', 'currency']),
         ]);
     }
 
@@ -47,11 +48,11 @@ class IncomeController extends Controller
 
         $validated = $request->validated();
 
-        $income->update($validated);
+        $income->update($this->withCurrencyAmount($validated, $income));
 
         return response()->json([
             'message' => 'Income updated successfully',
-            'data' => $income->load('source'),
+            'data' => $income->load(['source', 'currency']),
         ]);
     }
 
@@ -68,5 +69,24 @@ class IncomeController extends Controller
     private function authorizeOwner(Request $request, Income $income): void
     {
         abort_unless($income->user_id === $request->user()->id, 404);
+    }
+
+    /**
+     * @param array<string, mixed> $validated
+     * @return array<string, mixed>
+     */
+    private function withCurrencyAmount(array $validated, ?Income $income = null): array
+    {
+        if (! array_key_exists('amount', $validated) && ! array_key_exists('currency_id', $validated)) {
+            return $validated;
+        }
+
+        return [
+            ...$validated,
+            ...CurrencyConverter::amountAttributes(
+                $validated['amount'] ?? $income?->currency_amount ?? $income?->amount ?? 0,
+                $validated['currency_id'] ?? $income?->currency_id
+            ),
+        ];
     }
 }

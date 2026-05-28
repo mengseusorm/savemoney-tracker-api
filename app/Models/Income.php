@@ -11,6 +11,9 @@ class Income extends Model
         'income_source_id',
         'title',
         'amount',
+        'currency_id',
+        'currency_amount',
+        'exchange_rate',
         'income_date',
         'note',
     ];
@@ -19,6 +22,8 @@ class Income extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'currency_amount' => 'decimal:2',
+            'exchange_rate' => 'decimal:6',
             'income_date' => 'date',
         ];
     }
@@ -31,5 +36,10 @@ class Income extends Model
     public function source(): BelongsTo
     {
         return $this->belongsTo(IncomeSource::class, 'income_source_id');
+    }
+
+    public function currency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class);
     }
 }

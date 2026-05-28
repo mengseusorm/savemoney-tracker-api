@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CurrencyController;
 use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\IncomeController;
@@ -32,6 +33,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::apiResource('income-sources', IncomeSourceController::class);
+    Route::apiResource('currencies', CurrencyController::class);
     Route::apiResource('incomes', IncomeController::class);
     Route::apiResource('expense-categories', ExpenseCategoryController::class);
     Route::apiResource('expenses', ExpenseController::class);

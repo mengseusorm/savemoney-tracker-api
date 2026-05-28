@@ -11,6 +11,9 @@ class SavingGoal extends Model
     protected $fillable = [
         'name',
         'target_amount',
+        'currency_id',
+        'target_currency_amount',
+        'exchange_rate',
         'current_amount',
         'start_date',
         'deadline',
@@ -27,6 +30,8 @@ class SavingGoal extends Model
     {
         return [
             'target_amount' => 'decimal:2',
+            'target_currency_amount' => 'decimal:2',
+            'exchange_rate' => 'decimal:6',
             'current_amount' => 'decimal:2',
             'start_date' => 'date',
             'deadline' => 'date',
@@ -41,6 +46,11 @@ class SavingGoal extends Model
     public function transactions(): HasMany
     {
         return $this->hasMany(SavingTransaction::class);
+    }
+
+    public function currency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class);
     }
 
     public function getProgressAttribute(): float

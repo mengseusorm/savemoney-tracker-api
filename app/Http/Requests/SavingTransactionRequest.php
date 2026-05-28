@@ -23,6 +23,7 @@ class SavingTransactionRequest extends FormRequest
         return [
             'type' => [$required, 'string', Rule::in([SavingTransaction::TYPE_DEPOSIT, SavingTransaction::TYPE_WITHDRAW])],
             'amount' => [$required, 'numeric', 'gt:0'],
+            'currency_id' => ['nullable', 'integer', Rule::exists('currencies', 'id')->where('is_active', true)],
             'transaction_date' => [$required, 'date'],
             'note' => 'nullable|string',
         ];

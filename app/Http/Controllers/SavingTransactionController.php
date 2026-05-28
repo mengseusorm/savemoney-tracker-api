@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\SavingTransactionRequest;
 use App\Models\SavingGoal;
 use App\Models\SavingTransaction;
+use App\Support\CurrencyConverter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -16,7 +17,7 @@ class SavingTransactionController extends Controller
         $this->authorizeGoalOwner($request, $savingGoal);
 
         return response()->json([
-            'data' => $savingGoal->transactions()->latest('transaction_date')->latest()->get(),
+            'data' => $savingGoal->transactions()->with('currency')->latest('transaction_date')->latest()->get(),
         ]);
     }
 
@@ -27,11 +28,12 @@ class SavingTransactionController extends Controller
         $validated = $request->validated();
 
         $transaction = DB::transaction(function () use ($request, $savingGoal, $validated) {
-            $projectedCurrent = (float) $savingGoal->current_amount + $this->signedAmount($validated['type'], (float) $validated['amount']);
+            $attributes = $this->withCurrencyAmount($validated);
+            $projectedCurrent = (float) $savingGoal->current_amount + $this->signedAmount($attributes['type'], (float) $attributes['amount']);
             $this->assertValidProjectedCurrent($savingGoal, $projectedCurrent);
 
             $transaction = $request->user()->savingTransactions()->create([
-                ...$validated,
+                ...$attributes,
                 'saving_goal_id' => $savingGoal->id,
             ]);
 
@@ -42,7 +44,7 @@ class SavingTransactionController extends Controller
 
         return response()->json([
             'message' => 'Saving transaction created successfully',
-            'data' => $transaction->load('goal'),
+            'data' => $transaction->load(['goal.currency', 'currency']),
         ], 201);
     }
 
@@ -51,7 +53,7 @@ class SavingTransactionController extends Controller
         $this->authorizeTransactionOwner($request, $savingTransaction);
 
         return response()->json([
-            'data' => $savingTransaction->load('goal'),
+            'data' => $savingTransaction->load(['goal.currency', 'currency']),
         ]);
     }
 
@@ -63,13 +65,14 @@ class SavingTransactionController extends Controller
 
         $transaction = DB::transaction(function () use ($savingTransaction, $validated) {
             $goal = $savingTransaction->goal;
-            $type = $validated['type'] ?? $savingTransaction->type;
-            $amount = (float) ($validated['amount'] ?? $savingTransaction->amount);
+            $attributes = $this->withCurrencyAmount($validated, $savingTransaction);
+            $type = $attributes['type'] ?? $savingTransaction->type;
+            $amount = (float) ($attributes['amount'] ?? $savingTransaction->amount);
             $projectedCurrent = (float) $goal->current_amount - $savingTransaction->signedAmount() + $this->signedAmount($type, $amount);
 
             $this->assertValidProjectedCurrent($goal, $projectedCurrent);
 
-            $savingTransaction->update($validated);
+            $savingTransaction->update($attributes);
             $this->updateGoalCurrentAmount($goal, $projectedCurrent);
 
             return $savingTransaction;
@@ -77,7 +80,7 @@ class SavingTransactionController extends Controller
 
         return response()->json([
             'message' => 'Saving transaction updated successfully',
-            'data' => $transaction->load('goal'),
+            'data' => $transaction->load(['goal.currency', 'currency']),
         ]);
     }
 
@@ -138,5 +141,24 @@ class SavingTransactionController extends Controller
     private function authorizeTransactionOwner(Request $request, SavingTransaction $savingTransaction): void
     {
         abort_unless($savingTransaction->user_id === $request->user()->id, 404);
+    }
+
+    /**
+     * @param array<string, mixed> $validated
+     * @return array<string, mixed>
+     */
+    private function withCurrencyAmount(array $validated, ?SavingTransaction $savingTransaction = null): array
+    {
+        if (! array_key_exists('amount', $validated) && ! array_key_exists('currency_id', $validated)) {
+            return $validated;
+        }
+
+        return [
+            ...$validated,
+            ...CurrencyConverter::amountAttributes(
+                $validated['amount'] ?? $savingTransaction?->currency_amount ?? $savingTransaction?->amount ?? 0,
+                $validated['currency_id'] ?? $savingTransaction?->currency_id
+            ),
+        ];
     }
 }
