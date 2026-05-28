@@ -29,6 +29,7 @@ class IncomeRequest extends FormRequest
             'amount' => "{$required}|numeric|gt:0",
             'currency_id' => ['nullable', 'integer', Rule::exists('currencies', 'id')->where('is_active', true)],
             'income_date' => "{$required}|date",
+            'income_end_date' => 'nullable|date|after_or_equal:income_date',
             'note' => 'nullable|string',
         ];
     }

@@ -11,9 +11,9 @@ class CurrencySeeder extends Seeder
     {
         collect([
             ['code' => 'USD', 'name' => 'US Dollar', 'symbol' => '$', 'exchange_rate' => 1],
-            ['code' => 'KHR', 'name' => 'Cambodian Riel', 'symbol' => 'KHR', 'exchange_rate' => 0.00025],
-            ['code' => 'THB', 'name' => 'Thai Baht', 'symbol' => 'THB', 'exchange_rate' => 0.027],
-            ['code' => 'EUR', 'name' => 'Euro', 'symbol' => 'EUR', 'exchange_rate' => 1.08],
+            ['code' => 'KHR', 'name' => 'Cambodian Riel', 'symbol' => 'KHR', 'exchange_rate' => 4000],
+            ['code' => 'THB', 'name' => 'Thai Baht', 'symbol' => 'THB', 'exchange_rate' => 37],
+            ['code' => 'EUR', 'name' => 'Euro', 'symbol' => 'EUR', 'exchange_rate' => 0.92],
         ])->each(fn (array $currency) => Currency::updateOrCreate(
             ['code' => $currency['code']],
             $currency

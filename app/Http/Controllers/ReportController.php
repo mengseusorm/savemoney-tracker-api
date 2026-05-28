@@ -11,36 +11,44 @@ class ReportController extends Controller
     {
         [$fromDate, $toDate] = $this->dateRange($request->validated());
 
-        $incomeQuery = $request->user()->incomes();
-        $expenseQuery = $request->user()->expenses();
+        $incomeQuery = $request->user()->incomes()->with('source');
+        $expenseQuery = $request->user()->expenses()->with('category');
 
         if ($fromDate && $toDate) {
-            $incomeQuery->whereBetween('income_date', [$fromDate, $toDate]);
-            $expenseQuery->whereBetween('expense_date', [$fromDate, $toDate]);
+            $this->applyPeriodDateRange($incomeQuery, 'income_date', 'income_end_date', $fromDate, $toDate);
+            $this->applyExpenseDateRange($expenseQuery, $fromDate, $toDate);
         }
 
-        $totalIncome = (float) $incomeQuery->sum('amount');
-        $totalExpense = (float) $expenseQuery->sum('amount');
+        $incomes = $incomeQuery->get();
+        $totalIncome = (float) $incomes->sum('amount');
+        $expenses = $this->withExpenseReportAmounts($expenseQuery->get(), $fromDate, $toDate);
+        $totalExpense = (float) $expenses->sum('report_amount');
 
+        $incomeTotalsBySource = $incomes
+            ->groupBy('income_source_id')
+            ->map(fn ($items) => number_format((float) $items->sum('amount'), 2, '.', ''));
         $incomeBySource = $request->user()
             ->incomeSources()
-            ->withSum(['incomes as total_amount' => function ($query) use ($fromDate, $toDate) {
-                if ($fromDate && $toDate) {
-                    $query->whereBetween('income_date', [$fromDate, $toDate]);
-                }
-            }], 'amount')
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->map(function ($source) use ($incomeTotalsBySource) {
+                $source->setAttribute('total_amount', $incomeTotalsBySource->get($source->id, '0.00'));
 
+                return $source;
+            });
+
+        $expenseTotalsByCategory = $expenses
+            ->groupBy('expense_category_id')
+            ->map(fn ($items) => number_format((float) $items->sum('report_amount'), 2, '.', ''));
         $expenseByCategory = $request->user()
             ->expenseCategories()
-            ->withSum(['expenses as total_amount' => function ($query) use ($fromDate, $toDate) {
-                if ($fromDate && $toDate) {
-                    $query->whereBetween('expense_date', [$fromDate, $toDate]);
-                }
-            }], 'amount')
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->map(function ($category) use ($expenseTotalsByCategory) {
+                $category->setAttribute('total_amount', $expenseTotalsByCategory->get($category->id, '0.00'));
+
+                return $category;
+            });
 
         return response()->json([
             'data' => [
@@ -51,6 +59,74 @@ class ReportController extends Controller
                 'balance' => number_format($totalIncome - $totalExpense, 2, '.', ''),
                 'income_by_source' => $incomeBySource,
                 'expense_by_category' => $expenseByCategory,
+            ],
+        ]);
+    }
+
+    public function incomes(ReportSummaryRequest $request)
+    {
+        [$fromDate, $toDate] = $this->dateRange($request->validated());
+
+        $query = $request->user()
+            ->incomes()
+            ->with(['source', 'currency'])
+            ->latest('income_date')
+            ->latest();
+
+        $this->applyPeriodDateRange($query, 'income_date', 'income_end_date', $fromDate, $toDate);
+
+        $rows = $query->get();
+        $bySource = $rows
+            ->groupBy(fn ($income) => $income->source?->name ?? 'Unknown')
+            ->map(fn ($items, $name) => [
+                'name' => $name,
+                'total_amount' => number_format((float) $items->sum('amount'), 2, '.', ''),
+                'count' => $items->count(),
+            ])
+            ->values();
+
+        return response()->json([
+            'data' => [
+                'from_date' => $fromDate,
+                'to_date' => $toDate,
+                'total_amount' => number_format((float) $rows->sum('amount'), 2, '.', ''),
+                'count' => $rows->count(),
+                'by_source' => $bySource,
+                'rows' => $rows,
+            ],
+        ]);
+    }
+
+    public function expenses(ReportSummaryRequest $request)
+    {
+        [$fromDate, $toDate] = $this->dateRange($request->validated());
+
+        $query = $request->user()
+            ->expenses()
+            ->with(['category', 'currency'])
+            ->latest('expense_date')
+            ->latest();
+
+        $this->applyExpenseDateRange($query, $fromDate, $toDate);
+
+        $rows = $this->withExpenseReportAmounts($query->get(), $fromDate, $toDate);
+        $byCategory = $rows
+            ->groupBy(fn ($expense) => $expense->category?->name ?? 'Unknown')
+            ->map(fn ($items, $name) => [
+                'name' => $name,
+                'total_amount' => number_format((float) $items->sum('report_amount'), 2, '.', ''),
+                'count' => $items->count(),
+            ])
+            ->values();
+
+        return response()->json([
+            'data' => [
+                'from_date' => $fromDate,
+                'to_date' => $toDate,
+                'total_amount' => number_format((float) $rows->sum('report_amount'), 2, '.', ''),
+                'count' => $rows->count(),
+                'by_category' => $byCategory,
+                'rows' => $rows,
             ],
         ]);
     }
@@ -74,5 +150,75 @@ class ReportController extends Controller
         }
 
         return [null, null];
+    }
+
+    private function applyExpenseDateRange($query, ?string $fromDate, ?string $toDate): void
+    {
+        $this->applyPeriodDateRange($query, 'expense_date', 'expense_end_date', $fromDate, $toDate);
+    }
+
+    private function applyPeriodDateRange($query, string $startColumn, string $endColumn, ?string $fromDate, ?string $toDate): void
+    {
+        if (! $fromDate || ! $toDate) {
+            return;
+        }
+
+        $query
+            ->where($startColumn, '<=', $toDate)
+            ->where(function ($query) use ($fromDate, $startColumn, $endColumn) {
+                $query
+                    ->where(function ($query) use ($fromDate, $startColumn, $endColumn) {
+                        $query
+                            ->whereNull($endColumn)
+                            ->where($startColumn, '>=', $fromDate);
+                    })
+                    ->orWhere($endColumn, '>=', $fromDate);
+            });
+    }
+
+    private function withExpenseReportAmounts($rows, ?string $fromDate, ?string $toDate)
+    {
+        return $rows->map(function ($expense) use ($fromDate, $toDate) {
+            $days = $this->expenseReportDays($expense, $fromDate, $toDate);
+            $reportAmount = $expense->daily_amount !== null
+                ? (float) $expense->daily_amount * $days
+                : (float) $expense->amount;
+            $reportCurrencyAmount = $expense->daily_currency_amount !== null
+                ? (float) $expense->daily_currency_amount * $days
+                : (float) ($expense->currency_amount ?? $expense->amount);
+
+            $expense->setAttribute('report_amount', number_format($reportAmount, 2, '.', ''));
+            $expense->setAttribute('report_currency_amount', number_format($reportCurrencyAmount, 2, '.', ''));
+            $expense->setAttribute('report_days', $days);
+
+            return $expense;
+        });
+    }
+
+    private function expenseReportDays($expense, ?string $fromDate, ?string $toDate): int
+    {
+        if ($expense->daily_amount === null) {
+            return 1;
+        }
+
+        $startDate = Carbon::parse($expense->expense_date);
+        $endDate = $expense->expense_end_date
+            ? Carbon::parse($expense->expense_end_date)
+            : $startDate->copy();
+
+        if (! $fromDate || ! $toDate) {
+            return (int) ($expense->daily_days ?? ($startDate->diffInDays($endDate) + 1));
+        }
+
+        $rangeStart = Carbon::parse($fromDate);
+        $rangeEnd = Carbon::parse($toDate);
+        $overlapStart = $startDate->greaterThan($rangeStart) ? $startDate : $rangeStart;
+        $overlapEnd = $endDate->lessThan($rangeEnd) ? $endDate : $rangeEnd;
+
+        if ($overlapEnd->lessThan($overlapStart)) {
+            return 0;
+        }
+
+        return (int) $overlapStart->diffInDays($overlapEnd) + 1;
     }
 }

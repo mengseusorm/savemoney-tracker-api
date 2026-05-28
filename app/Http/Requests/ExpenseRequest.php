@@ -28,7 +28,9 @@ class ExpenseRequest extends FormRequest
             'title' => "{$required}|string|max:255",
             'amount' => "{$required}|numeric|gt:0",
             'currency_id' => ['nullable', 'integer', Rule::exists('currencies', 'id')->where('is_active', true)],
+            'is_daily_expense' => 'sometimes|boolean',
             'expense_date' => "{$required}|date",
+            'expense_end_date' => 'nullable|date|after_or_equal:expense_date',
             'note' => 'nullable|string',
         ];
     }

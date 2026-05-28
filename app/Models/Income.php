@@ -15,6 +15,7 @@ class Income extends Model
         'currency_amount',
         'exchange_rate',
         'income_date',
+        'income_end_date',
         'note',
     ];
 
@@ -25,6 +26,7 @@ class Income extends Model
             'currency_amount' => 'decimal:2',
             'exchange_rate' => 'decimal:6',
             'income_date' => 'date',
+            'income_end_date' => 'date',
         ];
     }
 

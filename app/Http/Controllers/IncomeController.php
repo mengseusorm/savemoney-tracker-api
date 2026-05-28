@@ -6,6 +6,7 @@ use App\Http\Requests\IncomeRequest;
 use App\Models\Income;
 use App\Support\CurrencyConverter;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class IncomeController extends Controller
 {
@@ -77,12 +78,30 @@ class IncomeController extends Controller
      */
     private function withCurrencyAmount(array $validated, ?Income $income = null): array
     {
-        if (! array_key_exists('amount', $validated) && ! array_key_exists('currency_id', $validated)) {
+        if (
+            ! array_key_exists('amount', $validated)
+            && ! array_key_exists('currency_id', $validated)
+            && ! array_key_exists('income_date', $validated)
+            && ! array_key_exists('income_end_date', $validated)
+        ) {
             return $validated;
+        }
+
+        $incomeDate = Carbon::parse($validated['income_date'] ?? $income?->income_date ?? now());
+        $incomeEndDate = isset($validated['income_end_date'])
+            ? Carbon::parse($validated['income_end_date'])
+            : ($income?->income_end_date ? Carbon::parse($income->income_end_date) : $incomeDate->copy());
+
+        if (! array_key_exists('amount', $validated) && ! array_key_exists('currency_id', $validated)) {
+            return [
+                ...$validated,
+                'income_end_date' => $incomeEndDate->toDateString(),
+            ];
         }
 
         return [
             ...$validated,
+            'income_end_date' => $incomeEndDate->toDateString(),
             ...CurrencyConverter::amountAttributes(
                 $validated['amount'] ?? $income?->currency_amount ?? $income?->amount ?? 0,
                 $validated['currency_id'] ?? $income?->currency_id

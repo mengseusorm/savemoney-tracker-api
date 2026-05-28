@@ -58,7 +58,7 @@ class MoneyTrackerApiTest extends TestCase
             'code' => 'KHR',
             'name' => 'Cambodian Riel',
             'symbol' => 'KHR',
-            'exchange_rate' => 0.00025,
+            'exchange_rate' => 4000,
         ]);
         $sourceId = $this->postJson('/api/income-sources', [
             'name' => 'Freelance',
@@ -74,8 +74,139 @@ class MoneyTrackerApiTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('data.amount', '100.00')
             ->assertJsonPath('data.currency_amount', '400000.00')
-            ->assertJsonPath('data.exchange_rate', '0.000250')
+            ->assertJsonPath('data.exchange_rate', '4000.000000')
             ->assertJsonPath('data.currency.code', 'KHR');
+    }
+
+    public function test_user_can_get_income_and_expense_reports_by_date_range(): void
+    {
+        Sanctum::actingAs(User::factory()->create());
+
+        $sourceId = $this->postJson('/api/income-sources', [
+            'name' => 'Salary',
+        ])->assertCreated()->json('data.id');
+        $categoryId = $this->postJson('/api/expense-categories', [
+            'name' => 'Food',
+        ])->assertCreated()->json('data.id');
+
+        $this->postJson('/api/incomes', [
+            'income_source_id' => $sourceId,
+            'title' => 'May salary',
+            'amount' => 500,
+            'income_date' => '2026-05-01',
+        ])->assertCreated();
+        $this->postJson('/api/incomes', [
+            'income_source_id' => $sourceId,
+            'title' => 'June salary',
+            'amount' => 700,
+            'income_date' => '2026-06-01',
+        ])->assertCreated();
+        $this->postJson('/api/expenses', [
+            'expense_category_id' => $categoryId,
+            'title' => 'Lunch',
+            'amount' => 20,
+            'expense_date' => '2026-05-02',
+        ])->assertCreated();
+
+        $this->getJson('/api/reports/incomes?from_date=2026-05-01&to_date=2026-05-31')
+            ->assertOk()
+            ->assertJsonPath('data.total_amount', '500.00')
+            ->assertJsonPath('data.count', 1)
+            ->assertJsonPath('data.by_source.0.name', 'Salary');
+
+        $this->getJson('/api/reports/expenses?from_date=2026-05-01&to_date=2026-05-31')
+            ->assertOk()
+            ->assertJsonPath('data.total_amount', '20.00')
+            ->assertJsonPath('data.count', 1)
+            ->assertJsonPath('data.by_category.0.name', 'Food');
+    }
+
+    public function test_daily_expense_amount_is_calculated_for_full_month_in_reports(): void
+    {
+        Sanctum::actingAs(User::factory()->create());
+
+        $categoryId = $this->postJson('/api/expense-categories', [
+            'name' => 'Transport',
+        ])->assertCreated()->json('data.id');
+
+        $this->postJson('/api/expenses', [
+            'expense_category_id' => $categoryId,
+            'title' => 'Bus',
+            'amount' => 2,
+            'is_daily_expense' => true,
+            'expense_date' => '2026-05-01',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.is_daily_expense', true)
+            ->assertJsonPath('data.daily_amount', '2.00')
+            ->assertJsonPath('data.daily_days', 31)
+            ->assertJsonPath('data.expense_date', '2026-05-01T00:00:00.000000Z')
+            ->assertJsonPath('data.expense_end_date', '2026-05-31T00:00:00.000000Z')
+            ->assertJsonPath('data.amount', '62.00');
+
+        $this->getJson('/api/reports/expenses?from_date=2026-05-01&to_date=2026-05-31')
+            ->assertOk()
+            ->assertJsonPath('data.total_amount', '62.00')
+            ->assertJsonPath('data.rows.0.is_daily_expense', true)
+            ->assertJsonPath('data.rows.0.report_days', 31);
+
+        $this->getJson('/api/reports/expenses?from_date=2026-05-01&to_date=2026-05-07')
+            ->assertOk()
+            ->assertJsonPath('data.total_amount', '14.00')
+            ->assertJsonPath('data.rows.0.report_days', 7);
+    }
+
+    public function test_normal_expense_date_range_keeps_entered_amount(): void
+    {
+        Sanctum::actingAs(User::factory()->create());
+
+        $categoryId = $this->postJson('/api/expense-categories', [
+            'name' => 'Parking',
+        ])->assertCreated()->json('data.id');
+
+        $this->postJson('/api/expenses', [
+            'expense_category_id' => $categoryId,
+            'title' => 'Parking',
+            'amount' => 10,
+            'is_daily_expense' => false,
+            'expense_date' => '2026-05-01',
+            'expense_end_date' => '2026-05-03',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.is_daily_expense', false)
+            ->assertJsonPath('data.daily_amount', null)
+            ->assertJsonPath('data.daily_days', null)
+            ->assertJsonPath('data.amount', '10.00');
+
+        $this->getJson('/api/reports/expenses?from_date=2026-05-02&to_date=2026-05-02')
+            ->assertOk()
+            ->assertJsonPath('data.total_amount', '10.00')
+            ->assertJsonPath('data.rows.0.report_days', 1);
+    }
+
+    public function test_income_date_range_is_included_when_report_range_overlaps(): void
+    {
+        Sanctum::actingAs(User::factory()->create());
+
+        $sourceId = $this->postJson('/api/income-sources', [
+            'name' => 'Contract',
+        ])->assertCreated()->json('data.id');
+
+        $this->postJson('/api/incomes', [
+            'income_source_id' => $sourceId,
+            'title' => 'Project',
+            'amount' => 300,
+            'income_date' => '2026-05-01',
+            'income_end_date' => '2026-05-31',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.income_end_date', '2026-05-31T00:00:00.000000Z')
+            ->assertJsonPath('data.amount', '300.00');
+
+        $this->getJson('/api/reports/incomes?from_date=2026-05-15&to_date=2026-05-20')
+            ->assertOk()
+            ->assertJsonPath('data.total_amount', '300.00')
+            ->assertJsonPath('data.count', 1);
     }
 
     public function test_user_cannot_use_another_users_income_source(): void

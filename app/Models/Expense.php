@@ -14,7 +14,12 @@ class Expense extends Model
         'currency_id',
         'currency_amount',
         'exchange_rate',
+        'is_daily_expense',
+        'daily_amount',
+        'daily_currency_amount',
+        'daily_days',
         'expense_date',
+        'expense_end_date',
         'note',
     ];
 
@@ -24,7 +29,12 @@ class Expense extends Model
             'amount' => 'decimal:2',
             'currency_amount' => 'decimal:2',
             'exchange_rate' => 'decimal:6',
+            'is_daily_expense' => 'boolean',
+            'daily_amount' => 'decimal:2',
+            'daily_currency_amount' => 'decimal:2',
+            'daily_days' => 'integer',
             'expense_date' => 'date',
+            'expense_end_date' => 'date',
         ];
     }
 

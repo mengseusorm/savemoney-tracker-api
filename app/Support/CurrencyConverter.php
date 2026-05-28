@@ -14,7 +14,7 @@ class CurrencyConverter
         $currencyAmount = (float) $amount;
         $currency = $currencyId ? Currency::where('is_active', true)->find($currencyId) : null;
         $exchangeRate = $currency ? (float) $currency->exchange_rate : 1.0;
-        $baseAmount = $currencyAmount * $exchangeRate;
+        $baseAmount = $exchangeRate > 0 ? $currencyAmount / $exchangeRate : $currencyAmount;
 
         return [
             'amount' => number_format($baseAmount, 2, '.', ''),

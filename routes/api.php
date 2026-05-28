@@ -42,6 +42,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/saving-goals/{savingGoal}/transactions', [SavingTransactionController::class, 'store']);
     Route::apiResource('saving-transactions', SavingTransactionController::class)->except(['index', 'store']);
     Route::get('/reports/summary', [ReportController::class, 'summary']);
+    Route::get('/reports/incomes', [ReportController::class, 'incomes']);
+    Route::get('/reports/expenses', [ReportController::class, 'expenses']);
 });
 
 Route::get('/test', function () {
